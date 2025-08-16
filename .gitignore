@@ -1,0 +1,9 @@
+**/__pycache__
+.vscode
+.roo
+.venv
+
+downloads
+uploads
+logs
+output

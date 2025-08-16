@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thesis</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- 页面标题 -->
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-language"></i> Thesis Translator</h1>
+                <p class="subtitle">将英文PDF论文智能翻译为中文Markdown文档</p>
+            </div>
+        </header>
+
+        <!-- 主要内容区域 -->
+        <main class="main-content">
+            <!-- 上传区域 -->
+            <section class="upload-section">
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-upload"></i> 上传PDF文件</h2>
+                    </div>
+                    <div class="card-body">
+                        <form id="uploadForm" enctype="multipart/form-data">
+                            <!-- 文件上传区域 -->
+                            <div class="upload-area" id="uploadArea">
+                                <div class="upload-content">
+                                    <i class="fas fa-cloud-upload-alt"></i>
+                                    <p>拖拽PDF文件到此处或<span class="upload-link">点击选择文件</span></p>
+                                    <input type="file" id="fileInput" name="file" accept=".pdf" hidden>
+                                    <div class="file-info" id="fileInfo" style="display: none;">
+                                        <p><i class="fas fa-file-pdf"></i> <span id="fileName"></span></p>
+                                        <p class="file-size" id="fileSize"></p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 配置参数 -->
+                            <div class="config-section">
+                                <h3><i class="fas fa-cog"></i> 翻译配置</h3>
+                                <div class="config-grid">
+                                    <div class="config-item">
+                                        <label for="model">AI模型:</label>
+                                        <select id="model" name="model">
+                                            <option value="qwen-flash">Qwen-Flash（推荐）</option>
+                                            <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                                            <option value="qwen-flash">Qwen-Flash</option>
+                                        </select>
+                                    </div>
+                                    <div class="config-item">
+                                        <label for="chunkSize">文本块大小:</label>
+                                        <input type="number" id="chunkSize" name="chunk_size" value="10000" min="500" max="20000" step="100">
+                                    </div>
+                                    <div class="config-item">
+                                        <label for="temperature">生成温度:</label>
+                                        <input type="number" id="temperature" name="temperature" value="0.3" min="0" max="1" step="0.1">
+                                    </div>
+                                    <div class="config-item">
+                                        <label for="maxRetries">最大重试:</label>
+                                        <input type="number" id="maxRetries" name="max_retries" value="3" min="1" max="5">
+                                    </div>
+                                    <div class="config-item">
+                                        <label for="timeout">超时时间(秒):</label>
+                                        <input type="number" id="timeout" name="timeout" value="60" min="30" max="300" step="10">
+                                    </div>
+                                    <div class="config-item checkbox-item">
+                                        <input type="checkbox" id="includeToc" name="include_toc" checked>
+                                        <label for="includeToc">包含目录</label>
+                                    </div>
+                                    <div class="config-item checkbox-item">
+                                        <input type="checkbox" id="includeMetadata" name="include_metadata" checked>
+                                        <label for="includeMetadata">包含元数据</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 提交按钮 -->
+                            <div class="submit-section">
+                                <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
+                                    <i class="fas fa-rocket"></i> 开始翻译
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 任务状态区域 -->
+            <section class="status-section" id="statusSection" style="display: none;">
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-tasks"></i> 翻译进度</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="task-info">
+                            <div class="task-header">
+                                <h3 id="taskFileName">文件名</h3>
+                                <span class="task-status" id="taskStatus">等待中</span>
+                            </div>
+                            <div class="progress-container">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progressFill"></div>
+                                </div>
+                                <span class="progress-text" id="progressText">0%</span>
+                            </div>
+                            <div class="task-stage" id="taskStage">准备中...</div>
+                        </div>
+
+                        <!-- 下载按钮 -->
+                        <div class="download-section" id="downloadSection" style="display: none;">
+                            <button id="downloadBtn" class="btn btn-success">
+                                <i class="fas fa-download"></i> 下载翻译结果
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 日志显示区域 -->
+            <section class="logs-section" id="logsSection" style="display: none;">
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-list-alt"></i> 实时日志</h2>
+                        <button id="toggleLogs" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-eye"></i> 显示详细日志
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="logs-container" id="logsContainer">
+                            <div class="logs-list" id="logsList"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 历史任务区域 -->
+            <section class="history-section">
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-history"></i> 历史任务</h2>
+                        <button id="refreshHistory" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-sync-alt"></i> 刷新
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="history-list" id="historyList">
+                            <div class="empty-state">
+                                <i class="fas fa-inbox"></i>
+                                <p>暂无历史任务</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- 页脚 -->
+        <footer class="footer">
+            <p>&copy; 2024 Thesis Translator. </p>
+        </footer>
+    </div>
+
+    <!-- 消息提示 -->
+    <div id="notification" class="notification"></div>
+
+    <!-- 加载遮罩 -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>处理中...</p>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
