@@ -2,7 +2,7 @@ import argparse
 import logging
 import os
 import sys
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 import time
 
 # 添加项目根目录到Python路径
@@ -15,6 +15,9 @@ from src.text_cleaner import TextCleaner, TextCleaningError
 from src.text_sorter import TextSorter, TextSortingError
 from src.translator import AITranslator, TranslationError
 from src.markdown_generator import MarkdownGenerator
+from src.minio_client import MinIOClient, create_minio_client_from_config, create_minio_client_from_env
+from src.minio_file_interface import MinIOFileInterface, create_minio_file_interface_from_env
+from src.paper_downloader import PaperDownloader, create_paper_downloader_from_env
 
 # 配置日志
 logging.basicConfig(
@@ -62,6 +65,9 @@ class ThesisTranslator:
         
         # 初始化各模块
         self.pdf_extractor = None
+        self.minio_client = None
+        self.minio_file_interface = None
+        self.paper_downloader = None
         self.text_chunker = TextChunker(chunk_size=self.chunk_size)
         self.text_cleaner = TextCleaner(
             api_key=self.api_key,
@@ -89,14 +95,31 @@ class ThesisTranslator:
         )
         self.markdown_generator = MarkdownGenerator()
         
+        # 初始化MinIO相关模块（如果配置了MinIO）
+        self._init_minio_modules()
+        
         logger.info("论文翻译器初始化完成")
+    
+    def _init_minio_modules(self):
+        """初始化MinIO相关模块"""
+        try:
+            # 优先使用配置文件，回退到环境变量
+            self.minio_client = create_minio_client_from_config()
+            self.minio_file_interface = create_minio_file_interface_from_env()  # 保持原样
+            self.paper_downloader = create_paper_downloader_from_env()  # 保持原样
+            logger.info("MinIO模块初始化成功")
+        except Exception as e:
+            logger.warning(f"MinIO模块初始化失败: {e}")
+            self.minio_client = None
+            self.minio_file_interface = None
+            self.paper_downloader = None
     
     def translate_pdf(self, pdf_path: str, output_path: str) -> bool:
         """
         翻译PDF文件
         
         Args:
-            pdf_path (str): 输入PDF文件路径
+            pdf_path (str): 输入PDF文件路径或MinIO对象名称
             output_path (str): 输出Markdown文件路径
             
         Returns:
@@ -105,10 +128,48 @@ class ThesisTranslator:
         start_time = time.time()
         logger.info(f"开始翻译PDF文件: {pdf_path}")
         
+        # 检查是否为MinIO对象名称（不包含路径分隔符）
+        is_minio_object = not os.path.exists(pdf_path) and '/' not in pdf_path and '\\' not in pdf_path
+        
+        if is_minio_object and self.minio_file_interface:
+            # 从MinIO获取文件
+            logger.info(f"从MinIO获取文件: {pdf_path}")
+            actual_pdf_path = self.minio_file_interface.get_file_from_minio_to_temp(pdf_path, '.pdf')
+            if not actual_pdf_path:
+                logger.error(f"无法从MinIO获取文件: {pdf_path}")
+                return False
+            
+            try:
+                result = self._translate_pdf_file(actual_pdf_path, output_path, pdf_path)
+                return result
+            finally:
+                # 清理临时文件
+                if os.path.exists(actual_pdf_path):
+                    os.remove(actual_pdf_path)
+                    logger.debug(f"清理临时文件: {actual_pdf_path}")
+        else:
+            # 直接处理本地文件
+            return self._translate_pdf_file(pdf_path, output_path, pdf_path)
+    
+    def _translate_pdf_file(self, actual_pdf_path: str, output_path: str, original_source: str) -> bool:
+        """
+        翻译PDF文件的内部实现
+        
+        Args:
+            actual_pdf_path (str): 实际的PDF文件路径
+            output_path (str): 输出Markdown文件路径
+            original_source (str): 原始来源（用于日志）
+            
+        Returns:
+            bool: 翻译是否成功
+        """
+        start_time = time.time()
+        logger.info(f"开始处理PDF文件: {original_source}")
+        
         try:
             # 1. PDF文本解析
             logger.info("步骤1: 解析PDF文本")
-            with PDFTextExtractor(pdf_path) as extractor:
+            with PDFTextExtractor(actual_pdf_path) as extractor:
                 text_blocks = extractor.get_reading_order()
             
             if not text_blocks:
@@ -150,7 +211,7 @@ class ThesisTranslator:
                 metadata = {
                     "title": "翻译论文",
                     "date": time.strftime("%Y-%m-%d"),
-                    "source": os.path.basename(pdf_path),
+                    "source": os.path.basename(original_source),
                     "translator": "ThesisTranslator"
                 }
                 markdown_content = self.markdown_generator.add_metadata(markdown_content, metadata)
@@ -245,6 +306,81 @@ class ThesisTranslator:
             "estimated_time_remaining": 0
         }
     
+    def download_paper(self, url: str, object_name: str = None) -> Optional[Dict[str, Any]]:
+        """
+        下载论文到MinIO
+        
+        Args:
+            url (str): 论文资源链接
+            object_name (str): 自定义对象名称
+            
+        Returns:
+            Optional[Dict[str, Any]]: 下载结果信息
+        """
+        if not self.paper_downloader:
+            logger.error("论文下载器未初始化，请检查MinIO配置")
+            return None
+        
+        return self.paper_downloader.download_paper(url, object_name)
+    
+    def batch_download_papers(self, urls: List[str]) -> List[Dict[str, Any]]:
+        """
+        批量下载论文到MinIO
+        
+        Args:
+            urls (List[str]): 论文URL列表
+            
+        Returns:
+            List[Dict[str, Any]]: 下载结果列表
+        """
+        if not self.paper_downloader:
+            logger.error("论文下载器未初始化，请检查MinIO配置")
+            return []
+        
+        return self.paper_downloader.batch_download_papers(urls)
+    
+    def list_minio_files(self, prefix: str = "") -> List[Dict[str, Any]]:
+        """
+        列出MinIO中的文件
+        
+        Args:
+            prefix (str): 文件名前缀过滤
+            
+        Returns:
+            List[Dict[str, Any]]: 文件信息列表
+        """
+        if not self.minio_client:
+            logger.error("MinIO客户端未初始化，请检查MinIO配置")
+            return []
+        
+        return self.minio_client.list_files(prefix)
+    
+    def translate_from_minio(self, object_name: str, output_path: str) -> bool:
+        """
+        从MinIO翻译PDF文件
+        
+        Args:
+            object_name (str): MinIO中的对象名称
+            output_path (str): 输出Markdown文件路径
+            
+        Returns:
+            bool: 翻译是否成功
+        """
+        return self.translate_pdf(object_name, output_path)
+    
+    def get_minio_statistics(self) -> Dict[str, Any]:
+        """
+        获取MinIO统计信息
+        
+        Returns:
+            Dict[str, Any]: 统计信息
+        """
+        if not self.minio_file_interface:
+            logger.error("MinIO文件接口未初始化，请检查MinIO配置")
+            return {}
+        
+        return self.minio_file_interface.get_processing_statistics()
+    
     def set_configuration(self, config: Dict[str, Any]):
         """
         设置配置参数
@@ -273,8 +409,8 @@ class ThesisTranslator:
 def main():
     """主函数"""
     parser = argparse.ArgumentParser(description="英文论文翻译器")
-    parser.add_argument("input", help="输入PDF文件路径")
-    parser.add_argument("output", help="输出Markdown文件路径")
+    parser.add_argument("input", nargs='?', help="输入PDF文件路径或MinIO对象名称")
+    parser.add_argument("output", nargs='?', help="输出Markdown文件路径")
     parser.add_argument("--model", default=OPENAI_MODEL, help="OpenAI模型")
     parser.add_argument("--base-url", default=OPENAI_BASE_URL, help="OpenAI API基础URL")
     parser.add_argument("--chunk-size", type=int, default=CHUNK_SIZE, help="文本块大小")
@@ -283,6 +419,11 @@ def main():
     parser.add_argument("--timeout", type=int, default=OPENAI_TIMEOUT, help="超时时间(秒)")
     parser.add_argument("--include-toc", action="store_true", default=INCLUDE_TOC, help="包含目录")
     parser.add_argument("--include-metadata", action="store_true", default=INCLUDE_METADATA, help="包含元数据")
+    parser.add_argument("--download-paper", help="下载论文到MinIO")
+    parser.add_argument("--batch-download", help="批量下载论文，提供URL文件路径")
+    parser.add_argument("--list-files", action="store_true", help="列出MinIO中的文件")
+    parser.add_argument("--from-minio", action="store_true", help="从MinIO获取文件")
+    parser.add_argument("--start-service", action="store_true", help="启动MinIO HTTP服务")
     parser.add_argument("--verbose", "-v", action="store_true", help="详细输出")
     
     args = parser.parse_args()
@@ -292,6 +433,19 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
     
     try:
+        # 启动MinIO服务模式
+        if args.start_service:
+            from src.minio_service import create_minio_service_from_env
+            
+            service = create_minio_service_from_env()
+            host = os.getenv('MINIO_SERVICE_HOST', '0.0.0.0')
+            port = int(os.getenv('MINIO_SERVICE_PORT', '5000'))
+            debug = os.getenv('MINIO_SERVICE_DEBUG', 'false').lower() == 'true'
+            
+            print(f"启动MinIO HTTP服务: {host}:{port}")
+            service.run(host=host, port=port, debug=debug)
+            return
+        
         # 创建翻译器实例
         translator = ThesisTranslator(
             model=args.model,
@@ -304,15 +458,53 @@ def main():
             include_metadata=args.include_metadata
         )
         
-        # 执行翻译
-        success = translator.translate_pdf(args.input, args.output)
-        
-        if success:
-            print(f"翻译完成: {args.output}")
+        # 处理不同的操作模式
+        if args.download_paper:
+            # 下载论文模式
+            result = translator.download_paper(args.download_paper)
+            if result:
+                print(f"论文下载成功: {result['object_name']}")
+                sys.exit(0)
+            else:
+                print("论文下载失败")
+                sys.exit(1)
+                
+        elif args.batch_download:
+            # 批量下载模式
+            with open(args.batch_download, 'r', encoding='utf-8') as f:
+                urls = [line.strip() for line in f if line.strip()]
+            
+            results = translator.batch_download_papers(urls)
+            success_count = len([r for r in results if r])
+            print(f"批量下载完成: {success_count}/{len(urls)} 成功")
+            sys.exit(0 if success_count > 0 else 1)
+            
+        elif args.list_files:
+            # 列出文件模式
+            files = translator.list_minio_files()
+            print(f"MinIO中的文件 (共{len(files)}个):")
+            for file in files:
+                print(f"  - {file['name']} ({file['size']} bytes)")
             sys.exit(0)
+            
         else:
-            print("翻译失败，请查看日志了解详情")
-            sys.exit(1)
+            # 翻译模式
+            if not args.input or not args.output:
+                print("错误: 翻译模式需要指定输入和输出文件")
+                parser.print_help()
+                sys.exit(1)
+            
+            if args.from_minio:
+                success = translator.translate_from_minio(args.input, args.output)
+            else:
+                success = translator.translate_pdf(args.input, args.output)
+            
+            if success:
+                print(f"翻译完成: {args.output}")
+                sys.exit(0)
+            else:
+                print("翻译失败，请查看日志了解详情")
+                sys.exit(1)
             
     except Exception as e:
         logger.error(f"程序执行出错: {e}", exc_info=True)

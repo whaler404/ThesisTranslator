@@ -1,0 +1,220 @@
+# MinIO Configuration for ThesisTranslator
+# This file contains MinIO connection and storage settings
+
+minio:
+  # Connection settings
+  endpoint: "localhost:9000"
+  access_key: "minioadmin"
+  secret_key: "minioadmin123"
+  bucket_name: "papers"
+  secure: false
+  
+  # Service settings
+  service_host: "0.0.0.0"
+  service_port: 5000
+  service_debug: false
+  
+  # Storage settings
+  data_directory: "./minio/data"
+  config_directory: "./minio/config"
+  backup_directory: "./minio/backup"
+  
+  # Performance settings
+  max_concurrent_uploads: 5
+  max_concurrent_downloads: 10
+  timeout: 30
+  max_retries: 3
+  
+  # File settings
+  max_file_size: 104857600  # 100MB in bytes
+  allowed_extensions:
+    - ".pdf"
+    - ".txt"
+    - ".md"
+    - ".json"
+    - ".xml"
+  
+  # Security settings
+  enable_ssl: false
+  ssl_cert_path: ""
+  ssl_key_path: ""
+  
+  # Logging settings
+  log_level: "INFO"
+  log_file: "logs/minio.log"
+  log_rotation: true
+  max_log_size: "10MB"
+  backup_count: 5
+
+# Download settings
+download:
+  timeout: 30
+  max_retries: 3
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+  batch_delay: 1
+  check_robots: true
+  max_batch_size: 50
+  
+  # Supported sources
+  sources:
+    arxiv:
+      base_url: "https://arxiv.org"
+      patterns:
+        - "https://arxiv.org/pdf/"
+        - "https://arxiv.org/abs/"
+      max_retries: 3
+    
+    springer:
+      base_url: "https://link.springer.com"
+      patterns:
+        - "https://link.springer.com/content/pdf/"
+        - "https://link.springer.com/chapter/"
+        - "https://link.springer.com/article/"
+      max_retries: 3
+    
+    ieee:
+      base_url: "https://ieeexplore.ieee.org"
+      patterns:
+        - "https://ieeexplore.ieee.org/document/"
+      max_retries: 3
+    
+    acm:
+      base_url: "https://dl.acm.org"
+      patterns:
+        - "https://dl.acm.org/doi/pdf/"
+      max_retries: 3
+
+# HTTP Service settings
+service:
+  host: "0.0.0.0"
+  port: 5000
+  debug: false
+  cors_enabled: true
+  cors_origins:
+    - "*"
+  cors_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  cors_headers:
+    - "Content-Type"
+    - "Authorization"
+    - "X-Requested-With"
+  
+  # Rate limiting
+  rate_limit_enabled: false
+  rate_limit_requests: 100
+  rate_limit_window: 60  # seconds
+  
+  # Authentication (optional)
+  auth_enabled: false
+  auth_secret_key: "your-secret-key-here"
+  auth_token_expire_hours: 24
+
+# OpenAI settings
+openai:
+  api_key: ""  # Set in environment variable
+  model: "gpt-4"
+  base_url: "https://api.openai.com/v1"
+  timeout: 60
+  max_retries: 3
+  temperature: 0.3
+
+# Text processing settings
+text_processing:
+  chunk_size: 1000
+  overlap_size: 100
+  max_retries: 3
+  timeout: 60
+  
+  # Cleaning settings
+  enable_formula_detection: true
+  enable_title_detection: true
+  enable_content_filtering: true
+  
+  # Content to filter
+  filter_patterns:
+    - ".*@.*\\..*"  # Email addresses
+    - "http[s]?://.*"  # URLs
+    - "\\d{4}-\\d{2}-\\d{2}"  # Dates
+    - "page \\d+"  # Page numbers
+
+# Logging settings
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/translator.log"
+  max_size: "10MB"
+  backup_count: 5
+  console_output: true
+
+# Storage management
+storage:
+  # Auto-cleanup settings
+  enable_auto_cleanup: false
+  cleanup_interval_hours: 24
+  max_file_age_days: 30
+  max_storage_size_gb: 10
+  
+  # Backup settings
+  enable_backup: false
+  backup_interval_hours: 168  # 1 week
+  backup_retention_days: 30
+  
+  # Compression settings
+  enable_compression: false
+  compression_level: 6
+  
+  # Deduplication
+  enable_deduplication: false
+  deduplication_method: "checksum"
+
+# Monitoring and health
+monitoring:
+  enable_health_check: true
+  health_check_interval: 30
+  enable_metrics: false
+  metrics_port: 8080
+  
+  # Performance monitoring
+  track_download_time: true
+  track_upload_time: true
+  track_processing_time: true
+  
+  # Error tracking
+  track_errors: true
+  error_retention_days: 7
+
+# Development settings
+development:
+  debug_mode: false
+  test_mode: false
+  mock_services: false
+  
+  # Test data
+  test_pdf_path: "examples/sample_input.pdf"
+  test_output_path: "examples/sample_output.md"
+  
+  # Development tools
+  enable_profiler: false
+  enable_debugger: false
+  
+# Production settings
+production:
+  enable_ssl: true
+  ssl_cert_path: "/etc/ssl/certs/thesis-translator.crt"
+  ssl_key_path: "/etc/ssl/private/thesis-translator.key"
+  
+  # Security
+  enable_cors: false
+  cors_origins: []
+  
+  # Performance
+  worker_processes: 4
+  worker_connections: 1000
+  
+  # Monitoring
+  enable_monitoring: true
+  monitoring_endpoint: "http://localhost:9090"

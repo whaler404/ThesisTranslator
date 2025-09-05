@@ -2,14 +2,22 @@
 
 ## 项目概述
 
-ThesisTranslator 是一个从0到1实现的英文论文翻译器，能够从PDF文件中提取文本，保留排版结构，通过大模型翻译成中文，最终输出为Markdown格式。本项目严格按照用户需求设计和实现，具有以下核心功能：
+ThesisTranslator 是一个从0到1实现的英文论文翻译器，能够从PDF文件中提取文本，保留排版结构，通过大模型翻译成中文，最终输出为Markdown格式。现已集成MinIO对象存储功能，支持论文自动下载、存储和管理。本项目严格按照用户需求设计和实现，具有以下核心功能：
 
+### 基础翻译功能
 1. **PDF文本提取**: 使用PyMuPDF从PDF中解析文本和位置信息
 2. **智能文本处理**: 逐段合并翻译，保持语义连贯性
 3. **公式识别**: 自动识别数学公式并转换为LaTeX格式
 4. **标题识别**: 识别不同级别的章节并转换为多级标题
 5. **AI翻译**: 使用OpenAI API进行高质量英中翻译
 6. **Markdown输出**: 生成格式规范的Markdown文档
+
+### MinIO 集成功能
+7. **论文自动下载**: 从arXiv、Springer、IEEE等学术网站自动下载论文
+8. **对象存储管理**: 使用MinIO进行论文文件的存储和管理
+9. **HTTP API服务**: 提供完整的REST API接口进行文件操作
+10. **批量处理**: 支持批量下载和翻译多篇论文
+11. **多源支持**: 支持从多种学术资源网站下载论文
 
 ## 技术架构
 
@@ -48,15 +56,46 @@ ThesisTranslator 是一个从0到1实现的英文论文翻译器，能够从PDF�
    - 协调各模块工作
    - 提供命令行接口
    - 处理错误和日志
+   - 集成MinIO功能模块
+
+### MinIO 集成模块
+
+8. **MinIO客户端模块** (`src/minio_client.py`)
+   - 提供MinIO对象存储的完整客户端操作
+   - 支持文件上传、下载、列表、删除等操作
+   - 安全文件名生成和错误处理
+
+9. **论文下载模块** (`src/paper_downloader.py`)
+   - 从各种学术资源网站自动下载论文
+   - 支持arXiv、Springer、IEEE等专用下载接口
+   - 批量下载和重复下载检查
+
+10. **MinIO文件接口层** (`src/minio_file_interface.py`)
+    - 在PDF处理前提供MinIO文件获取接口
+    - 自动临时文件管理和清理
+    - 支持批量处理和统计信息
+
+11. **MinIO HTTP服务** (`src/minio_service.py`)
+    - 提供完整的REST API接口
+    - 支持文件管理、论文下载等操作
+    - Flask-based服务架构
 
 ### 技术栈
 
+#### 核心技术
 - **语言**: Python 3.8+
 - **PDF解析**: PyMuPDF (fitz)
 - **AI翻译**: OpenAI API
 - **项目管理**: Git
 - **测试框架**: unittest
 - **依赖管理**: pip + requirements.txt
+
+#### MinIO 集成技术
+- **对象存储**: MinIO
+- **HTTP服务**: Flask + Flask-CORS
+- **文件下载**: requests + urllib
+- **批量处理**: concurrent.futures
+- **容器化**: Docker (可选)
 
 ## 项目成果
 

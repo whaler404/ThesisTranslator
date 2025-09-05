@@ -5,11 +5,12 @@
 1. [快速开始](#快速开始)
 2. [安装指南](#安装指南)
 3. [基本使用](#基本使用)
-4. [高级功能](#高级功能)
-5. [配置说明](#配置说明)
-6. [故障排除](#故障排除)
-7. [最佳实践](#最佳实践)
-8. [常见问题](#常见问题)
+4. [MinIO 集成功能](#minio-集成功能)
+5. [高级功能](#高级功能)
+6. [配置说明](#配置说明)
+7. [故障排除](#故障排除)
+8. [最佳实践](#最佳实践)
+9. [常见问题](#常见问题)
 
 ## 快速开始
 
@@ -28,6 +29,12 @@ export OPENAI_API_KEY="your-openai-api-key"
 
 # 4. 运行翻译
 python -m src.main input.pdf output.md
+
+# 5. (可选) 启用MinIO功能
+export MINIO_ENDPOINT=localhost:9000
+export MINIO_ACCESS_KEY=minioadmin
+export MINIO_SECRET_KEY=minioadmin123
+export MINIO_BUCKET_NAME=papers
 ```
 
 ## 安装指南
@@ -37,8 +44,9 @@ python -m src.main input.pdf output.md
 - **操作系统**: Windows 10+, macOS 10.14+, Linux (Ubuntu 18.04+)
 - **Python版本**: 3.8 或更高
 - **内存**: 至少 4GB RAM (推荐 8GB+)
-- **存储**: 500MB 可用空间
-- **网络**: 稳定的互联网连接 (用于API调用)
+- **存储**: 500MB 可用空间 (MinIO功能需要额外空间用于存储论文文件)
+- **网络**: 稳定的互联网连接 (用于API调用和论文下载)
+- **可选**: MinIO服务器 (用于对象存储功能)
 
 ### 方式一：pip安装 (推荐)
 
@@ -178,6 +186,27 @@ python -m src.main input.pdf output.md \
     --config config/settings.json
 ```
 
+#### MinIO功能命令
+
+```bash
+# 下载论文到MinIO
+python -m src.main --download-paper "https://arxiv.org/pdf/2101.00001"
+
+# 批量下载论文
+echo "https://arxiv.org/pdf/2101.00001" > urls.txt
+echo "https://arxiv.org/pdf/2101.00002" >> urls.txt
+python -m src.main --batch-download urls.txt
+
+# 列出MinIO中的文件
+python -m src.main --list-files
+
+# 从MinIO翻译PDF
+python -m src.main paper_object_name output.md --from-minio
+
+# 启动HTTP服务
+python -m src.main --start-service
+```
+
 ### Python代码使用
 
 #### 基本使用
@@ -263,6 +292,407 @@ while True:
         break
         
     time.sleep(10)  # 每10秒检查一次
+```
+
+## MinIO 集成功能
+
+### 概述
+
+ThesisTranslator 现已集成 MinIO 对象存储功能，支持论文自动下载、存储和管理。通过 MinIO 集成，您可以：
+
+- 从学术网站自动下载论文到 MinIO 存储
+- 直接从 MinIO 存储桶翻译论文
+- 通过 HTTP API 进行文件管理
+- 批量处理多篇论文
+
+### 配置 MinIO
+
+#### 环境变量配置
+
+```bash
+# MinIO 连接配置
+export MINIO_ENDPOINT=localhost:9000
+export MINIO_ACCESS_KEY=minioadmin
+export MINIO_SECRET_KEY=minioadmin123
+export MINIO_BUCKET_NAME=papers
+export MINIO_SECURE=false
+
+# HTTP 服务配置
+export MINIO_SERVICE_HOST=0.0.0.0
+export MINIO_SERVICE_PORT=5000
+
+# 下载配置
+export DOWNLOAD_TIMEOUT=30
+export DOWNLOAD_MAX_RETRIES=3
+```
+
+#### 配置文件方式
+
+创建 `.env` 文件：
+
+```env
+# OpenAI 配置
+OPENAI_API_KEY=your-openai-api-key
+OPENAI_MODEL=gpt-4
+
+# MinIO 配置
+MINIO_ENDPOINT=localhost:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin123
+MINIO_BUCKET_NAME=papers
+MINIO_SECURE=false
+
+# 服务配置
+MINIO_SERVICE_HOST=0.0.0.0
+MINIO_SERVICE_PORT=5000
+```
+
+### 命令行使用
+
+#### 论文下载功能
+
+```bash
+# 下载单篇论文
+python -m src.main --download-paper "https://arxiv.org/pdf/2101.00001"
+
+# 下载时指定对象名称
+python -m src.main --download-paper "https://arxiv.org/pdf/2101.00001" --object-name "my_paper.pdf"
+
+# 批量下载论文
+echo "https://arxiv.org/pdf/2101.00001" > urls.txt
+echo "https://arxiv.org/pdf/2101.00002" >> urls.txt
+python -m src.main --batch-download urls.txt
+
+# 从文件批量下载
+python -m src.main --batch-download urls.txt --output-dir "downloads/"
+```
+
+#### 文件管理功能
+
+```bash
+# 列出MinIO中的文件
+python -m src.main --list-files
+
+# 使用前缀过滤
+python -m src.main --list-files --prefix "arxiv_"
+
+# 获取文件信息
+python -m src.main --file-info "arxiv_2101.00001.pdf"
+
+# 删除文件
+python -m src.main --delete-file "arxiv_2101.00001.pdf"
+```
+
+#### 从MinIO翻译
+
+```bash
+# 从MinIO翻译PDF
+python -m src.main paper_object_name output.md --from-minio
+
+# 指定模型和参数
+python -m src.main paper_object_name output.md --from-minio --model gpt-4 --chunk-size 800
+
+# 批量翻译MinIO中的文件
+python -m src.main --batch-minio "output_dir/" --prefix "arxiv_"
+```
+
+#### HTTP API服务
+
+```bash
+# 启动HTTP服务
+python -m src.main --start-service
+
+# 后台启动
+python -m src.main --start-service --host 0.0.0.0 --port 5000
+
+# 启用调试模式
+python -m src.main --start-service --debug
+```
+
+### Python API 使用
+
+#### MinIO 客户端操作
+
+```python
+from src.minio_client import MinIOClient
+
+# 创建MinIO客户端
+client = MinIOClient(
+    endpoint="localhost:9000",
+    access_key="minioadmin",
+    secret_key="minioadmin123",
+    bucket_name="papers"
+)
+
+# 上传文件
+client.upload_file("local.pdf", "remote.pdf")
+
+# 下载文件
+client.download_file("remote.pdf", "downloaded.pdf")
+
+# 列出文件
+files = client.list_files(prefix="arxiv_")
+print(f"找到 {len(files)} 个文件")
+
+# 删除文件
+client.delete_file("old_paper.pdf")
+```
+
+#### 论文下载器
+
+```python
+from src.paper_downloader import PaperDownloader
+
+# 创建下载器
+downloader = PaperDownloader(minio_client=client)
+
+# 下载单篇论文
+result = downloader.download_paper("https://arxiv.org/pdf/2101.00001")
+print(f"下载成功: {result['object_name']}")
+
+# 批量下载
+urls = [
+    "https://arxiv.org/pdf/2101.00001",
+    "https://arxiv.org/pdf/2101.00002"
+]
+results = downloader.batch_download_papers(urls)
+print(f"批量下载完成: {len(results['success'])} 成功")
+```
+
+#### 从MinIO翻译
+
+```python
+from src.minio_file_interface import MinIOFileInterface
+from src.main import ThesisTranslator
+
+# 创建MinIO文件接口
+minio_interface = MinIOFileInterface()
+
+# 创建翻译器
+translator = ThesisTranslator(openai_api_key="your-api-key")
+
+# 从MinIO翻译PDF
+success = translator.translate_from_minio(
+    "paper_object_name", 
+    "output.md",
+    minio_interface=minio_interface
+)
+
+if success:
+    print("翻译完成！")
+else:
+    print("翻译失败")
+```
+
+### HTTP API 使用
+
+#### 启动服务
+
+```python
+from src.minio_service import MinIOService
+
+# 创建服务实例
+service = MinIOService()
+
+# 启动服务
+service.run(host="0.0.0.0", port=5000, debug=False)
+```
+
+#### API 调用示例
+
+```python
+import requests
+
+# 基础URL
+BASE_URL = "http://localhost:5000"
+
+# 1. 下载论文
+response = requests.post(
+    f"{BASE_URL}/api/download/paper",
+    json={"url": "https://arxiv.org/pdf/2101.00001"}
+)
+result = response.json()
+print(f"下载结果: {result}")
+
+# 2. 获取文件列表
+response = requests.get(f"{BASE_URL}/api/files")
+files = response.json()
+print(f"文件列表: {files}")
+
+# 3. 上传文件
+with open("local.pdf", "rb") as f:
+    files = {"file": f}
+    response = requests.post(f"{BASE_URL}/api/upload", files=files)
+    result = response.json()
+    print(f"上传结果: {result}")
+
+# 4. 批量下载
+response = requests.post(
+    f"{BASE_URL}/api/download/batch",
+    json={
+        "urls": [
+            "https://arxiv.org/pdf/2101.00001",
+            "https://arxiv.org/pdf/2101.00002"
+        ]
+    }
+)
+result = response.json()
+print(f"批量下载结果: {result}")
+
+# 5. 获取统计信息
+response = requests.get(f"{BASE_URL}/api/statistics")
+stats = response.json()
+print(f"统计信息: {stats}")
+```
+
+### 支持的论文来源
+
+#### 自动支持的网站
+
+- **arXiv**: `https://arxiv.org/pdf/`
+- **Springer**: `https://link.springer.com/content/pdf/`
+- **IEEE**: `https://ieeexplore.ieee.org/document/`
+- **ACM**: `https://dl.acm.org/doi/pdf/`
+- **直接PDF链接**: 任何以 `.pdf` 结尾的链接
+
+#### 专用下载器
+
+```python
+from src.paper_downloader import ArXivDownloader, SpringerDownloader
+
+# arXiv专用下载器
+arxiv_downloader = ArXivDownloader()
+result = arxiv_downloader.download("2101.00001")
+
+# Springer专用下载器
+springer_downloader = SpringerDownloader()
+result = springer_downloader.download("10.1007/978-3-030-12345-6_1")
+```
+
+### 错误处理和重试
+
+```python
+from src.minio_client import MinIOClient
+from src.paper_downloader import PaperDownloader
+import logging
+
+# 设置日志
+logging.basicConfig(level=logging.INFO)
+
+# 创建带重试的客户端
+client = MinIOClient(
+    endpoint="localhost:9000",
+    access_key="minioadmin",
+    secret_key="minioadmin123",
+    bucket_name="papers",
+    max_retries=5,  # 增加重试次数
+    timeout=60      # 增加超时时间
+)
+
+# 创建下载器
+downloader = PaperDownloader(
+    minio_client=client,
+    timeout=30,
+    max_retries=3
+)
+
+# 下载时处理错误
+try:
+    result = downloader.download_paper("https://arxiv.org/pdf/2101.00001")
+    if result['success']:
+        print(f"下载成功: {result['object_name']}")
+    else:
+        print(f"下载失败: {result['error']}")
+except Exception as e:
+    print(f"下载异常: {e}")
+```
+
+### 最佳实践
+
+#### 1. 批量处理策略
+
+```python
+import os
+from src.paper_downloader import PaperDownloader
+
+def batch_download_with_retry(urls_file, max_retries=3):
+    """带重试的批量下载"""
+    with open(urls_file, 'r') as f:
+        urls = [line.strip() for line in f if line.strip()]
+    
+    downloader = PaperDownloader()
+    
+    for url in urls:
+        for attempt in range(max_retries):
+            try:
+                result = downloader.download_paper(url)
+                if result['success']:
+                    print(f"✓ 下载成功: {url}")
+                    break
+                else:
+                    print(f"✗ 下载失败: {url} - {result['error']}")
+            except Exception as e:
+                print(f"✗ 下载异常: {url} - {e}")
+            
+            if attempt < max_retries - 1:
+                print(f"  5秒后重试...")
+                time.sleep(5)
+```
+
+#### 2. 文件命名规范
+
+```python
+def generate_safe_filename(url, custom_name=None):
+    """生成安全的文件名"""
+    if custom_name:
+        return custom_name
+    
+    # 从URL提取文件名
+    if 'arxiv.org' in url:
+        # arXiv格式: arxiv_YYMM.NNNNN.pdf
+        import re
+        match = re.search(r'(\d{4}\.\d{5})', url)
+        if match:
+            return f"arxiv_{match.group(1)}.pdf"
+    
+    # 通用URL处理
+    import urllib.parse
+    parsed = urllib.parse.urlparse(url)
+    filename = os.path.basename(parsed.path)
+    
+    # 清理文件名
+    return ''.join(c for c in filename if c.isalnum() or c in '._-')
+```
+
+#### 3. 存储空间管理
+
+```python
+from src.minio_client import MinIOClient
+
+def manage_storage_space(max_size_gb=10):
+    """管理存储空间"""
+    client = MinIOClient()
+    
+    # 获取当前使用情况
+    files = client.list_files()
+    total_size = sum(f['size'] for f in files)
+    max_size_bytes = max_size_gb * 1024 * 1024 * 1024
+    
+    print(f"当前使用: {total_size / 1024 / 1024:.1f} MB")
+    print(f"最大限制: {max_size_gb} GB")
+    
+    if total_size > max_size_bytes:
+        print("存储空间不足，清理旧文件...")
+        # 按修改时间排序，删除最旧的文件
+        sorted_files = sorted(files, key=lambda x: x['last_modified'])
+        
+        for file in sorted_files:
+            if total_size <= max_size_bytes:
+                break
+            
+            client.delete_file(file['name'])
+            total_size -= file['size']
+            print(f"删除文件: {file['name']}")
 ```
 
 ## 高级功能
