@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-colors duration-200;
+  }
+  
+  .btn-primary {
+    @apply bg-primary-600 text-white hover:bg-primary-700 focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-200 text-gray-800 hover:bg-gray-300 focus:ring-2 focus:ring-gray-500 focus:ring-offset-2;
+  }
+  
+  .btn-danger {
+    @apply bg-red-600 text-white hover:bg-red-700 focus:ring-2 focus:ring-red-500 focus:ring-offset-2;
+  }
+  
+  .card {
+    @apply bg-white rounded-lg shadow-md border border-gray-200;
+  }
+  
+  .input {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-colors;
+  }
+  
+  .file-preview-container {
+    @apply flex gap-4 h-[calc(100vh-8rem)];
+  }
+  
+  .file-preview-left,
+  .file-preview-right {
+    @apply flex-1 overflow-auto border border-gray-300 rounded-lg p-4;
+  }
+  
+  .markdown-preview {
+    @apply max-w-none;
+  }
+  
+  .markdown-preview h1,
+  .markdown-preview h2,
+  .markdown-preview h3,
+  .markdown-preview h4,
+  .markdown-preview h5,
+  .markdown-preview h6 {
+    @apply mt-6 mb-4 font-semibold leading-tight;
+  }
+  
+  .markdown-preview h1 {
+    @apply text-2xl border-b border-gray-200 pb-2;
+  }
+  
+  .markdown-preview h2 {
+    @apply text-xl border-b border-gray-200 pb-2;
+  }
+  
+  .markdown-preview code {
+    @apply px-1 py-0.5 text-sm bg-gray-100 rounded;
+  }
+  
+  .markdown-preview pre {
+    @apply p-4 overflow-auto text-sm bg-gray-100 rounded-lg;
+  }
+  
+  .markdown-preview pre code {
+    @apply p-0 bg-transparent;
+  }
+  
+  .translation-progress {
+    @apply p-6 bg-gray-100 rounded-lg mt-4;
+  }
+  
+  .file-list-item {
+    @apply cursor-pointer transition-all duration-200 hover:bg-gray-100;
+  }
+  
+  .file-list-item.translated {
+    @apply text-blue-600;
+  }
+  
+  .file-list-item.untranslated {
+    @apply text-green-600;
+  }
+  
+  .file-info-panel {
+    @apply bg-gray-50 p-4 rounded-lg mt-4;
+  }
+  
+  .log-container {
+    @apply bg-black text-green-400 p-4 rounded-lg font-mono text-xs max-h-96 overflow-y-auto mt-4;
+  }
+  
+  .log-entry {
+    @apply mb-1 leading-relaxed;
+  }
+  
+  .log-entry.error {
+    @apply text-red-400;
+  }
+  
+  .log-entry.warning {
+    @apply text-yellow-400;
+  }
+  
+  .log-entry.info {
+    @apply text-green-400;
+  }
+  
+  .pdf-viewer {
+    @apply w-full h-full border-none;
+  }
+}

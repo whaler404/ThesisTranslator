@@ -72,3 +72,10 @@ coverage.xml
 
 # Docker
 .dockerignore
+
+# Node.js
+**/node_modules/
+**/dist/
+**/.next/
+**/public/
+!frontend/src/lib/
