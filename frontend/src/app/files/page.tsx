@@ -19,8 +19,13 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { tomorrow } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import 'katex/dist/katex.min.css';
+import InlineMath from 'react-latex-next';
+import BlockMath from 'react-latex-next';
 
 export default function FilesPage() {
   const [loading, setLoading] = useState(false);
@@ -32,6 +37,7 @@ export default function FilesPage() {
   const [previewMode, setPreviewMode] = useState<'pdf' | 'md' | 'both'>('both');
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [newName, setNewName] = useState('');
+  const [renaming, setRenaming] = useState(false);
 
   useEffect(() => {
     loadFiles();
@@ -103,18 +109,38 @@ export default function FilesPage() {
   };
 
   const handleRename = async () => {
+    if (!selectedFile || !newName.trim()) return;
+    
+    setRenaming(true);
     try {
-      // 重命名功能需要后端支持
-      setRenameModalVisible(false);
-      setNewName('');
+      const result = await fileApi.renameFile(selectedFile.name, newName);
+      if (result.success) {
+        // 更新文件列表
+        await loadFiles();
+        // 更新选中的文件信息
+        const updatedFile = {
+          ...selectedFile,
+          name: result.new_name || newName
+        };
+        setSelectedFile(updatedFile);
+        setRenameModalVisible(false);
+        setNewName('');
+      } else {
+        alert('重命名失败: ' + (result.message || '未知错误'));
+      }
     } catch (error) {
       console.error('重命名失败:', error);
+      alert('重命名失败: ' + (error as Error).message);
+    } finally {
+      setRenaming(false);
     }
   };
 
   const showRenameModal = (file: any) => {
     setSelectedFile(file);
-    setNewName(file.name);
+    // 显示文件名但不包括扩展名
+    const displayName = file.name.replace(/\.[^/.]+$/, '');
+    setNewName(displayName);
     setRenameModalVisible(true);
   };
 
@@ -156,6 +182,7 @@ export default function FilesPage() {
             src={fileUrl}
             className="pdf-viewer"
             title={selectedFile.name}
+            sandbox="allow-same-origin allow-scripts allow-forms"
           />
         </div>
       </div>
@@ -376,25 +403,41 @@ export default function FilesPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-96">
             <h3 className="text-lg font-semibold mb-4">重命名文件</h3>
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              className="input w-full mb-4"
-              placeholder="新文件名"
-            />
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2">当前文件: {selectedFile?.name}</p>
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="input w-full"
+                placeholder="新文件名（无需扩展名）"
+                disabled={renaming}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                系统会自动处理文件扩展名，重命名会同时处理PDF和对应的翻译文件
+              </p>
+            </div>
             <div className="flex space-x-3">
               <button
                 onClick={handleRename}
-                className="btn btn-primary flex-1"
+                disabled={renaming || !newName.trim()}
+                className="btn btn-primary flex-1 flex items-center justify-center"
               >
-                确定
+                {renaming ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    重命名中...
+                  </>
+                ) : (
+                  '确定'
+                )}
               </button>
               <button
                 onClick={() => {
                   setRenameModalVisible(false);
                   setNewName('');
                 }}
+                disabled={renaming}
                 className="btn btn-secondary flex-1"
               >
                 取消
@@ -441,10 +484,36 @@ function MarkdownViewer({ fileName }: MarkdownViewerProps) {
     );
   }
 
+  // 处理 LaTeX 公式
+  const processLatexFormulas = (text: string) => {
+    // 处理行内公式 $formula$
+    text = text.replace(/\$([^$]+)\$/g, (match, formula) => {
+      try {
+        return `<InlineMath math="${formula.replace(/"/g, '&quot;')}" />`;
+      } catch (error) {
+        return match;
+      }
+    });
+    
+    // 处理块级公式 $$formula$$
+    text = text.replace(/\$\$([^$]+)\$\$/g, (match, formula) => {
+      try {
+        return `<BlockMath math="${formula.replace(/"/g, '&quot;')}" />`;
+      } catch (error) {
+        return match;
+      }
+    });
+    
+    return text;
+  };
+
+  const processedContent = processLatexFormulas(content);
+
   return (
     <div className="markdown-preview">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
         components={{
           code(props: any) {
             const { inline, className, children, ...rest } = props;
@@ -466,7 +535,7 @@ function MarkdownViewer({ fileName }: MarkdownViewerProps) {
           },
         }}
       >
-        {content}
+        {processedContent}
       </ReactMarkdown>
     </div>
   );

@@ -3,18 +3,14 @@
 
 import os
 import sys
-import json
 import logging
 import uuid
-import asyncio
-import threading
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks, Depends
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import tempfile
@@ -238,11 +234,18 @@ async def root():
     return {"message": "Thesis Translator API", "version": "1.0.0"}
 
 @app.post("/api/upload", response_model=TaskResponse)
-async def upload_file(file: UploadFile = File(...), config: TranslationConfig = Depends()):
+async def upload_file(
+    custom_name: str,
+    file: UploadFile = File(...), 
+    config: TranslationConfig = Depends()
+):
     """上传PDF文件到MinIO"""
     try:
         if not file.filename or not file.filename.lower().endswith('.pdf'):
             raise HTTPException(status_code=400, detail="只支持PDF文件")
+        
+        if not custom_name or not custom_name.strip():
+            raise HTTPException(status_code=400, detail="必须提供自定义文件名")
         
         # 生成唯一的任务ID
         task_id = str(uuid.uuid4())
@@ -253,11 +256,22 @@ async def upload_file(file: UploadFile = File(...), config: TranslationConfig = 
             shutil.copyfileobj(file.file, temp_file)
             temp_path = temp_file.name
         
-        # 生成对象名称
-        object_name = f"{task_id}_{file.filename}"
-        
         # 初始化MinIO客户端
         minio_client = create_minio_client_from_env()
+        
+        # 处理文件名：使用自定义名称
+        safe_filename = custom_name.replace(' ', '_')
+        if not safe_filename.lower().endswith('.pdf'):
+            safe_filename += '.pdf'
+        
+        # 检查文件名冲突并解决
+        base_name = safe_filename[:-4]  # 移除.pdf扩展名
+        object_name = safe_filename
+        counter = 1
+        
+        while minio_client.file_exists(object_name):
+            object_name = f"{base_name}_{counter}.pdf"
+            counter += 1
         
         # 上传到MinIO
         success = minio_client.upload_file(temp_path, object_name)
@@ -477,6 +491,51 @@ async def delete_file(object_name: str):
         raise
     except Exception as e:
         logger.error(f"文件删除失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class RenameRequest(BaseModel):
+    new_name: str
+
+@app.put("/api/files/{object_name}/rename")
+async def rename_file(object_name: str, request: RenameRequest):
+    """重命名MinIO中的文件"""
+    try:
+        # 初始化MinIO客户端
+        minio_client = create_minio_client_from_env()
+        
+        # 处理新文件名：替换空格为下划线，确保.pdf扩展名
+        new_name = request.new_name.replace(' ', '_')
+        if not new_name.lower().endswith('.pdf'):
+            new_name += '.pdf'
+        
+        # 检查源文件是否存在
+        if not minio_client.file_exists(object_name):
+            raise HTTPException(status_code=404, detail="源文件不存在")
+        
+        # 检查目标文件是否已存在
+        if minio_client.file_exists(new_name):
+            raise HTTPException(status_code=400, detail="目标文件名已存在")
+        
+        # 重命名文件
+        success = minio_client.rename_file(object_name, new_name)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="文件重命名失败")
+        
+        # 如果是PDF文件，同时重命名对应的翻译文件
+        if object_name.lower().endswith('.pdf'):
+            old_translation_name = object_name.rsplit('.', 1)[0] + '.md'
+            new_translation_name = new_name.rsplit('.', 1)[0] + '.md'
+            
+            if minio_client.file_exists(old_translation_name):
+                minio_client.rename_file(old_translation_name, new_translation_name)
+        
+        return {"success": True, "message": "文件重命名成功", "new_name": new_name}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"文件重命名失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/tasks")

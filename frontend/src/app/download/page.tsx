@@ -4,12 +4,14 @@ import { useState, useEffect } from 'react';
 import MainLayout from '@/components/MainLayout';
 import { fileApi } from '@/utils/api';
 import { sanitizeFileName } from '@/utils/fileUtils';
-import { Upload, Link, AlertCircle, CheckCircle, Loader2, Download as DownloadIcon } from 'lucide-react';
+import { Upload, Link, AlertCircle, CheckCircle, Loader2, FileText } from 'lucide-react';
 
 export default function DownloadPage() {
   const [uploading, setUploading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [existingFiles, setExistingFiles] = useState<string[]>([]);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileName, setFileName] = useState('');
   const [url, setUrl] = useState('');
   const [objectName, setObjectName] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
@@ -36,20 +38,34 @@ export default function DownloadPage() {
     setTimeout(() => setMessage(null), 3000);
   };
 
-  const handleFileUpload = async (file: File) => {
-    const fileName = sanitizeFileName(file.name);
+  const handleFileUpload = async () => {
+    if (!selectedFile) {
+      showMessage('error', '请先选择文件');
+      return;
+    }
+
+    if (!fileName.trim()) {
+      showMessage('error', '请输入文件名');
+      return;
+    }
+
+    // 确保文件名以.pdf结尾
+    const finalFileName = fileName.endsWith('.pdf') ? fileName : fileName + '.pdf';
+    const sanitizedFileName = sanitizeFileName(finalFileName);
     
-    if (checkFileExists(fileName)) {
-      showMessage('warning', `文件 "${fileName}" 已存在，无需重复上传`);
-      return false;
+    if (checkFileExists(sanitizedFileName)) {
+      showMessage('warning', `文件 "${sanitizedFileName}" 已存在，无需重复上传`);
+      return;
     }
 
     setUploading(true);
     try {
-      const result = await fileApi.uploadFile(file);
+      const result = await fileApi.uploadFile(selectedFile, sanitizedFileName);
       if (result.success) {
         showMessage('success', '文件上传成功');
         loadExistingFiles();
+        setSelectedFile(null);
+        setFileName('');
       } else {
         showMessage('error', result.error || '上传失败');
       }
@@ -59,7 +75,6 @@ export default function DownloadPage() {
     } finally {
       setUploading(false);
     }
-    return false;
   };
 
   const handleUrlDownload = async () => {
@@ -68,16 +83,23 @@ export default function DownloadPage() {
       return;
     }
 
-    const fileName = sanitizeFileName(objectName || url.split('/').pop() || 'unknown.pdf');
+    if (!objectName.trim()) {
+      showMessage('error', '请输入文件名');
+      return;
+    }
+
+    // 确保文件名以.pdf结尾
+    const finalFileName = objectName.endsWith('.pdf') ? objectName : objectName + '.pdf';
+    const sanitizedFileName = sanitizeFileName(finalFileName);
     
-    if (checkFileExists(fileName)) {
-      showMessage('warning', `文件 "${fileName}" 已存在，无需重复下载`);
+    if (checkFileExists(sanitizedFileName)) {
+      showMessage('warning', `文件 "${sanitizedFileName}" 已存在，无需重复下载`);
       return;
     }
 
     setDownloading(true);
     try {
-      const result = await fileApi.downloadPaper({ url, object_name: fileName });
+      const result = await fileApi.downloadPaper({ url, object_name: sanitizedFileName });
       if (result.success) {
         showMessage('success', '论文下载成功');
         loadExistingFiles();
@@ -98,14 +120,24 @@ export default function DownloadPage() {
     e.preventDefault();
     const files = e.dataTransfer.files;
     if (files.length > 0) {
-      handleFileUpload(files[0]);
+      setSelectedFile(files[0]);
+      // 自动填充文件名
+      if (!fileName) {
+        const name = files[0].name.replace(/\s+/g, '_').replace(/\.pdf$/i, '');
+        setFileName(name);
+      }
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      handleFileUpload(files[0]);
+      setSelectedFile(files[0]);
+      // 自动填充文件名
+      if (!fileName) {
+        const name = files[0].name.replace(/\s+/g, '_').replace(/\.pdf$/i, '');
+        setFileName(name);
+      }
     }
   };
 
@@ -113,13 +145,13 @@ export default function DownloadPage() {
     <MainLayout>
       <div className="max-w-4xl mx-auto">
         <div className="card p-6">
-          <h2 className="text-2xl font-bold mb-6">下载论文到 MinIO</h2>
+          <h2 className="text-2xl font-bold mb-6">上传论文到 MinIO</h2>
           
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
             <div className="flex items-start">
               <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 mr-3" />
               <p className="text-blue-800 text-sm">
-                系统会自动检查文件是否已存在，避免重复下载。文件名中的空格会自动替换为下划线。
+                系统会自动检查文件是否已存在，避免重复上传。文件名中的空格会自动替换为下划线，所有文件都会以.pdf结尾。
               </p>
             </div>
           </div>
@@ -129,44 +161,88 @@ export default function DownloadPage() {
             <div>
               <h3 className="text-lg font-semibold mb-4 flex items-center">
                 <Upload className="h-5 w-5 mr-2" />
-                上传 PDF 文件
+                本地上传 PDF 文件
               </h3>
               
-              <div
-                className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-primary-400 transition-colors duration-200"
-                onDrop={handleDrop}
-                onDragOver={(e) => e.preventDefault()}
-                onDragEnter={(e) => e.preventDefault()}
-              >
-                {uploading ? (
-                  <div className="flex flex-col items-center">
-                    <Loader2 className="h-12 w-12 animate-spin text-primary-600 mb-4" />
-                    <p className="text-gray-600">上传中...</p>
+              <div className="space-y-4">
+                <div
+                  className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-primary-400 transition-colors duration-200"
+                  onDrop={handleDrop}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDragEnter={(e) => e.preventDefault()}
+                >
+                  {uploading ? (
+                    <div className="flex flex-col items-center">
+                      <Loader2 className="h-12 w-12 animate-spin text-primary-600 mb-4" />
+                      <p className="text-gray-600">上传中...</p>
+                    </div>
+                  ) : (
+                    <>
+                      <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-lg font-medium text-gray-700 mb-2">
+                        拖拽文件到此处或点击选择
+                      </p>
+                      <p className="text-sm text-gray-500 mb-4">
+                        仅支持 PDF 文件
+                      </p>
+                      <input
+                        type="file"
+                        accept=".pdf"
+                        onChange={handleFileSelect}
+                        className="hidden"
+                        id="file-upload"
+                      />
+                      <label
+                        htmlFor="file-upload"
+                        className="btn btn-primary cursor-pointer"
+                      >
+                        选择文件
+                      </label>
+                    </>
+                  )}
+                </div>
+                
+                {selectedFile && (
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <div className="flex items-center">
+                      <FileText className="h-5 w-5 text-gray-400 mr-2" />
+                      <span className="text-sm text-gray-700">{selectedFile.name}</span>
+                    </div>
                   </div>
-                ) : (
-                  <>
-                    <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-lg font-medium text-gray-700 mb-2">
-                      拖拽文件到此处或点击选择
-                    </p>
-                    <p className="text-sm text-gray-500 mb-4">
-                      仅支持 PDF 文件
-                    </p>
-                    <input
-                      type="file"
-                      accept=".pdf"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                      id="file-upload"
-                    />
-                    <label
-                      htmlFor="file-upload"
-                      className="btn btn-primary cursor-pointer"
-                    >
-                      选择文件
-                    </label>
-                  </>
                 )}
+                
+                <div>
+                  <label htmlFor="file_name" className="block text-sm font-medium text-gray-700 mb-2">
+                    文件名 *
+                  </label>
+                  <input
+                    type="text"
+                    id="file_name"
+                    value={fileName}
+                    onChange={(e) => setFileName(e.target.value)}
+                    placeholder="输入文件名（无需.pdf后缀）"
+                    className="input"
+                    disabled={uploading}
+                  />
+                </div>
+                
+                <button
+                  onClick={handleFileUpload}
+                  disabled={uploading || !selectedFile || !fileName.trim()}
+                  className="btn btn-primary w-full flex items-center justify-center"
+                >
+                  {uploading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      上传中...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      上传文件
+                    </>
+                  )}
+                </button>
               </div>
             </div>
 
@@ -174,7 +250,7 @@ export default function DownloadPage() {
             <div>
               <h3 className="text-lg font-semibold mb-4 flex items-center">
                 <Link className="h-5 w-5 mr-2" />
-                提供论文链接
+                通过链接上传论文
               </h3>
               
               <div className="space-y-4">
@@ -195,14 +271,14 @@ export default function DownloadPage() {
                 
                 <div>
                   <label htmlFor="object_name" className="block text-sm font-medium text-gray-700 mb-2">
-                    文件名（可选）
+                    文件名 *
                   </label>
                   <input
                     type="text"
                     id="object_name"
                     value={objectName}
                     onChange={(e) => setObjectName(e.target.value)}
-                    placeholder="论文文件名.pdf"
+                    placeholder="输入文件名（无需.pdf后缀）"
                     className="input"
                     disabled={downloading}
                   />
@@ -210,7 +286,7 @@ export default function DownloadPage() {
                 
                 <button
                   onClick={handleUrlDownload}
-                  disabled={downloading || !url.trim()}
+                  disabled={downloading || !url.trim() || !objectName.trim()}
                   className="btn btn-primary w-full flex items-center justify-center"
                 >
                   {downloading ? (
@@ -220,8 +296,8 @@ export default function DownloadPage() {
                     </>
                   ) : (
                     <>
-                      <DownloadIcon className="h-4 w-4 mr-2" />
-                      下载论文
+                      <Link className="h-4 w-4 mr-2" />
+                      上传论文
                     </>
                   )}
                 </button>

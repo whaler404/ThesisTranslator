@@ -50,18 +50,16 @@ class MinIOFileInterface:
         Returns:
             str: 临时文件路径
         """
-        # 生成安全的文件名
-        safe_filename = self._generate_safe_filename(object_name)
+        # 清理文件名
+        clean_filename = self.sanitize_filename(object_name)
         
         # 处理扩展名
         if custom_extension:
-            base_name = safe_filename.rsplit('.', 1)[0] if '.' in safe_filename else safe_filename
-            safe_filename = base_name + custom_extension
-        elif '.' not in safe_filename:
-            safe_filename += '.pdf'
+            base_name = clean_filename.rsplit('.', 1)[0] if '.' in clean_filename else clean_filename
+            clean_filename = base_name + custom_extension
         
         # 确保文件名唯一
-        final_filename = self._generate_unique_filename(safe_filename)
+        final_filename = self._generate_unique_filename(clean_filename)
         
         # 创建完整路径
         temp_path = os.path.join(self._actual_temp_dir, final_filename)
@@ -71,15 +69,15 @@ class MinIOFileInterface:
         
         return temp_path
     
-    def _generate_safe_filename(self, filename: str) -> str:
+    def sanitize_filename(self, filename: str) -> str:
         """
-        生成安全的文件名
+        简单的文件名清理 - 只替换空格为下划线
         
         Args:
             filename (str): 原始文件名
             
         Returns:
-            str: 安全的文件名
+            str: 清理后的文件名
         """
         if not filename:
             return 'untitled.pdf'
@@ -87,29 +85,11 @@ class MinIOFileInterface:
         # 移除路径信息
         filename = os.path.basename(filename)
         
-        # 替换特殊字符
-        unsafe_chars = '@#$%^&*+=[]{}|\\:"<>?'
-        for char in unsafe_chars:
-            filename = filename.replace(char, '')
-        
-        # 替换空格为下划线
+        # 只替换空格为下划线
         filename = filename.replace(' ', '_')
         
-        # 处理Windows保留名称
-        reserved_names = ['con', 'prn', 'aux', 'nul', 'com1', 'com2', 'com3', 'com4', 
-                          'com5', 'com6', 'com7', 'com8', 'com9', 'lpt1', 'lpt2', 
-                          'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9']
-        
-        base_name = filename.rsplit('.', 1)[0] if '.' in filename else filename
-        if base_name.lower() in reserved_names:
-            base_name = '_' + base_name
-            if '.' in filename:
-                filename = base_name + '.' + filename.rsplit('.', 1)[1]
-            else:
-                filename = base_name + '.pdf'
-        
-        # 如果没有扩展名，添加.pdf
-        if '.' not in filename:
+        # 确保有.pdf扩展名
+        if not filename.lower().endswith('.pdf'):
             filename += '.pdf'
         
         return filename

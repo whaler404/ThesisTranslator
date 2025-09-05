@@ -16,11 +16,11 @@ export const fileApi = {
   },
 
   // 上传文件
-  uploadFile: async (file: File, config?: TranslationConfig): Promise<TaskResponse> => {
+  uploadFile: async (file: File, customName: string, config?: TranslationConfig): Promise<TaskResponse> => {
     const formData = new FormData();
     formData.append('file', file);
     
-    const response = await api.post('/upload', formData, {
+    const response = await api.post(`/upload?custom_name=${encodeURIComponent(customName)}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -34,6 +34,12 @@ export const fileApi = {
     const response = await api.post('/download-paper', request, {
       params: config,
     });
+    return response.data;
+  },
+
+  // 重命名文件
+  renameFile: async (objectName: string, newName: string): Promise<{ success: boolean; message: string; new_name?: string }> => {
+    const response = await api.put(`/files/${objectName}/rename`, { new_name: newName });
     return response.data;
   },
 

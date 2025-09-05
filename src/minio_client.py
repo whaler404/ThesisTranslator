@@ -367,6 +367,55 @@ class MinIOClient:
             Optional[str]: 临时访问URL
         """
         return self.get_file_url(object_name, expires)
+    
+    def rename_file(self, old_object_name: str, new_object_name: str) -> bool:
+        """
+        重命名MinIO中的文件
+        
+        Args:
+            old_object_name (str): 原对象名称
+            new_object_name (str): 新对象名称
+            
+        Returns:
+            bool: 重命名是否成功
+        """
+        try:
+            # 检查源文件是否存在
+            if not self.file_exists(old_object_name):
+                logger.error(f"源文件不存在: {old_object_name}")
+                return False
+            
+            # 检查目标文件是否已存在
+            if self.file_exists(new_object_name):
+                logger.error(f"目标文件已存在: {new_object_name}")
+                return False
+            
+            # 复制文件到新名称
+            source_data = self.download_to_bytes(old_object_name)
+            if not source_data:
+                logger.error(f"无法读取源文件: {old_object_name}")
+                return False
+            
+            # 获取源文件的content type
+            content_type = self._get_content_type(old_object_name)
+            
+            # 上传到新名称
+            success = self.upload_from_bytes(source_data, new_object_name, content_type)
+            if not success:
+                logger.error(f"无法上传到新名称: {new_object_name}")
+                return False
+            
+            # 删除原文件
+            delete_success = self.delete_file(old_object_name)
+            if not delete_success:
+                logger.warning(f"重命名成功但删除原文件失败: {old_object_name}")
+            
+            logger.info(f"文件重命名成功: {old_object_name} -> {new_object_name}")
+            return True
+            
+        except S3Error as e:
+            logger.error(f"文件重命名失败: {e}")
+            return False
 
 
 def create_minio_client_from_config() -> MinIOClient:
